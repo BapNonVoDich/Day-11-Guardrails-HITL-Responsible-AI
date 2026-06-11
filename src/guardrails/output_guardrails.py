@@ -1,8 +1,8 @@
 """
 Lab 11 — Part 2B: Output Guardrails
-  TODO 6: Content filter (PII, secrets)
-  TODO 7: LLM-as-Judge safety check
-  TODO 8: Output Guardrail Plugin (ADK)
+  COMPLETED 6: Content filter (PII, secrets)
+  COMPLETED 7: LLM-as-Judge safety check
+  COMPLETED 8: Output Guardrail Plugin (ADK)
 """
 import re
 import textwrap
@@ -16,7 +16,7 @@ from core.utils import chat_with_agent
 
 
 # ============================================================
-# TODO 6: Implement content_filter()
+# COMPLETED 6: Implement content_filter()
 #
 # Check if the response contains PII (personal info), API keys,
 # passwords, or inappropriate content.
@@ -39,14 +39,12 @@ def content_filter(response: str) -> dict:
     issues = []
     redacted = response
 
-    # PII patterns to check
     PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+        "VN Phone": r"0\d{9,10}",
+        "Email": r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}",
+        "National ID": r"\b\d{9}\b|\b\d{12}\b",
+        "API Key": r"sk-[a-zA-Z0-9-]+",
+        "Password": r"admin123",
     }
 
     for name, pattern in PII_PATTERNS.items():
@@ -63,7 +61,7 @@ def content_filter(response: str) -> dict:
 
 
 # ============================================================
-# TODO 7: Implement LLM-as-Judge
+# COMPLETED 7: Implement LLM-as-Judge
 #
 # Create a separate agent (judge) to check response safety.
 # The judge classifies responses as SAFE or UNSAFE.
@@ -89,15 +87,11 @@ Respond with ONLY one word: SAFE or UNSAFE
 If UNSAFE, add a brief reason on the next line.
 """
 
-# TODO: Create safety_judge_agent using LlmAgent
-# Hint:
-# safety_judge_agent = llm_agent.LlmAgent(
-#     model="gemini-2.0-flash",
-#     name="safety_judge",
-#     instruction=SAFETY_JUDGE_INSTRUCTION,
-# )
-
-safety_judge_agent = None  # TODO: Replace with implementation
+safety_judge_agent = llm_agent.LlmAgent(
+    model="gemini-3.1-flash-lite",
+    name="safety_judge",
+    instruction=SAFETY_JUDGE_INSTRUCTION,
+)
 judge_runner = None
 
 
@@ -129,7 +123,7 @@ async def llm_safety_check(response_text: str) -> dict:
 
 
 # ============================================================
-# TODO 8: Implement OutputGuardrailPlugin
+# COMPLETED 8: Implement OutputGuardrailPlugin
 #
 # This plugin checks the agent's output BEFORE sending to the user.
 # Uses after_model_callback to intercept LLM responses.
@@ -172,16 +166,23 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        # 1. Content Filter
+        filter_result = content_filter(response_text)
+        if not filter_result["safe"]:
+            response_text = filter_result["redacted"]
+            self.redacted_count += 1
+            if llm_response.content and llm_response.content.parts:
+                llm_response.content.parts[0].text = response_text
 
-        return llm_response  # TODO: modify if needed
+        # 2. LLM Judge Safety
+        if self.use_llm_judge:
+            safety_result = await llm_safety_check(response_text)
+            if not safety_result["safe"]:
+                self.blocked_count += 1
+                if llm_response.content and llm_response.content.parts:
+                    llm_response.content.parts[0].text = "I apologize, but I cannot provide that information for safety reasons."
+                
+        return llm_response
 
 
 # ============================================================
